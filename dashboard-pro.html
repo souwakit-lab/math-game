@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>怪獸數學 - 專業數據可視化大屏</title>
+    <!-- 引入 Chart.js 作為數據可視化工具 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #1e1e2f; color: #fff; padding: 20px; margin: 0; }
+        h1 { text-align: center; color: #4facfe; margin-bottom: 5px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto 20px auto; background: #27293d; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; transition: 0.3s; }
+        .btn-primary { background: #4facfe; color: white; }
+        .btn-primary:hover { background: #00f2fe; }
+        .btn-success { background: #00f2fe; color: #1e1e2f; }
+        .status { color: #00f2fe; font-size: 0.9em; display: flex; align-items: center; }
+        .status .dot { width: 10px; height: 10px; background: #00f2fe; border-radius: 50%; margin-right: 8px; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .card { background: #27293d; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .card.full-width { grid-column: span 2; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; color: #fff; }
+        th, td { border-bottom: 1px solid #344675; padding: 12px 8px; text-align: left; }
+        th { background-color: #1d8cf8; color: white; border:none; }
+        tr:hover { background-color: rgba(29, 140, 248, 0.1); }
+        
+        .chart-container { position: relative; height: 300px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>📊 怪獸數學 - 實時可視化大屏</h1>
+    <div class="top-bar">
+        <div class="status"><div class="dot"></div><span id="update-time">等待連接中... (每 5 秒自動刷新)</span></div>
+        <div>
+            <button class="btn btn-primary" onclick="fetchData()">🔄 手動刷新</button>
+            <button class="btn btn-success" onclick="exportToCSV()" style="margin-left:10px;">📥 導出為 CSV (Excel)</button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- 圓餅圖：全班正確率 -->
+        <div class="card">
+            <h2 style="margin-top:0; color:#e14eca; font-size:1.2em;">🎯 全班總體正確率</h2>
+            <div class="chart-container">
+                <canvas id="accuracyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 長條圖：高頻錯題 Top 5 -->
+        <div class="card">
+            <h2 style="margin-top:0; color:#ff8d72; font-size:1.2em;">🚨 高頻錯題排行榜</h2>
+            <div class="chart-container">
+                <canvas id="wrongQuestionsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card full-width">
+            <h2 style="margin-top:0; color:#1d8cf8; font-size:1.2em;">🏆 學生最新作答動態</h2>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead><tr><th>最後活動時間</th><th>姓名</th><th>得分</th><th>擊敗怪獸</th><th>耗時</th><th>錯題概況</th></tr></thead>
+                    <tbody id="student-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === 貼上您的 Google Apps Script 網址 ===
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtJDKt0u28ZiEKu1k5RcAP_MzA4OtomgR4XSZa0I6dU6ZorYK7hN6sCpzbh1xk6IrC/exec';
+        
+        let globalRawData = []; // 保存原始數據供導出使用
+        let accuracyChartInstance = null;
+        let wrongChartInstance = null;
+
+        Chart.defaults.color = '#ccc'; // 設置圖表預設字體顏色
+
+        async function fetchData() {
+            try {
+                const response = await fetch(SCRIPT_URL);
+                const data = await response.json();
+                globalRawData = data; // 存儲起來給導出CSV用
+                
+                document.getElementById('update-time').innerText = `最後更新：${new Date().toLocaleTimeString()} (每 5 秒自動刷新)`;
+                
+                processAndRender(data);
+            } catch (error) {
+                console.error("抓取資料失敗", error);
+                document.getElementById('update-time').innerText = "連線失敗，稍後自動重試...";
+            }
+        }
+
+        function processAndRender(data) {
+            const tableBody = document.getElementById('student-table-body');
+            tableBody.innerHTML = '';
+            
+            // 統計變數
+            let totalCorrect = 0;
+            let totalWrong = 0;
+            const wrongQuestionsCount = {};
+
+            // 1. 處理表格與去重 (取每個學生最新的一筆)
+            const latestData = new Map();
+            data.forEach(row => { latestData.set(row.name, row); });
+            const uniqueData = Array.from(latestData.values()).reverse();
+
+            uniqueData.forEach(row => {
+                let wrongSummary = "全對 🎉";
+                let detailsArr = [];
+                try {
+                    detailsArr = JSON.parse(row.details);
+                    let wrongCount = 0;
+                    detailsArr.forEach(q => {
+                        if (q.is_correct) {
+                            totalCorrect++;
+                        } else {
+                            totalWrong++;
+                            wrongCount++;
+                            // 統計錯題頻率
+                            wrongQuestionsCount[q.question] = (wrongQuestionsCount[q.question] || 0) + 1;
+                        }
+                    });
+                    if(wrongCount > 0) wrongSummary = `<span style="color:#ff8d72">答錯 ${wrongCount} 題</span>`;
+                } catch(e) {}
+
+                const tr = document.createElement('tr');
+                const date = new Date(row.timestamp).toLocaleTimeString();
+                tr.innerHTML = `<td>${date}</td><td><strong>${row.name}</strong></td><td>${row.score}</td><td>${row.monsters}</td><td>${row.totalTime}s</td><td>${wrongSummary}</td>`;
+                tableBody.appendChild(tr);
+            });
+
+            // 2. 更新圓餅圖 (正確率)
+            updateAccuracyChart(totalCorrect, totalWrong);
+
+            // 3. 更新長條圖 (高頻錯題)
+            updateWrongQuestionsChart(wrongQuestionsCount);
+        }
+
+        function updateAccuracyChart(correct, wrong) {
+            const ctx = document.getElementById('accuracyChart').getContext('2d');
+            if(accuracyChartInstance) accuracyChartInstance.destroy(); // 銷毀舊圖表以重繪
+            
+            if(correct === 0 && wrong === 0) return; // 無數據不畫圖
+
+            accuracyChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['答對題數', '答錯題數'],
+                    datasets: [{
+                        data: [correct, wrong],
+                        backgroundColor: ['#00f2fe', '#ff8d72'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        function updateWrongQuestionsChart(wrongDict) {
+            const ctx = document.getElementById('wrongQuestionsChart').getContext('2d');
+            if(wrongChartInstance) wrongChartInstance.destroy();
+
+            // 排序並取前 5 名
+            const sortedWrongs = Object.entries(wrongDict)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            
+            const labels = sortedWrongs.map(item => item[0].substring(0, 15) + (item[0].length>15?'...':'')); // 截斷過長題目
+            const data = sortedWrongs.map(item => item[1]);
+
+            wrongChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '錯誤次數',
+                        data: data,
+                        backgroundColor: '#e14eca',
+                        borderRadius: 4
+                    }]
+                },
+                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            });
+        }
+
+        // 導出 CSV 邏輯
+        function exportToCSV() {
+            if(globalRawData.length === 0) return alert('目前沒有數據可導出');
+            
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 加入BOM避免Excel中文亂碼
+            // 表頭
+            csvContent += "時間,姓名,得分,擊敗怪獸,總耗時(秒),詳細作答紀錄\r\n";
+            
+            globalRawData.forEach(row => {
+                // 將 details 陣列轉為文字描述，避免逗號干擾 CSV 格式
+                let detailText = "";
+                try {
+                    const details = JSON.parse(row.details);
+                    detailText = details.map((q, i) => `[題${i+1}:${q.is_correct?'對':'錯'}]`).join(" ");
+                } catch(e) {}
+
+                const r = [
+                    new Date(row.timestamp).toLocaleString(),
+                    row.name,
+                    row.score,
+                    row.monsters,
+                    row.totalTime,
+                    detailText
+                ];
+                // 處理可能包含逗號的字串
+                let rowString = r.map(item => `"${String(item).replace(/"/g, '""')}"`).join(",");
+                csvContent += rowString + "\r\n";
+            });
+
+            // 觸發下載
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `怪獸數學數據_${new Date().toLocaleDateString()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        window.onload = () => {
+            fetchData();
+            // 每 5 秒實時刷新
+            setInterval(fetchData, 5000); 
+        };
+    </script>
+</body>
+</html>
