@@ -180,9 +180,6 @@
   <!-- 自动重定向到在线地址（解决 file:// 协议的 CORS 问题） -->
   <script>
       (function () {
-        // 检测是否为本地文件协议
-        if (window.location.protocol === 'file:') {
-
           const watermarkUrl = window.__SERVER_DATA__.watermarkUrl
 
           // 检查是否有有效的在线地址
@@ -192,9 +189,6 @@
             // 阻止后续脚本执行
             throw new Error('Redirecting to online version...')
           }
-          // 阻止后续脚本执行
-          throw new Error('Local file protocol detected without online URL')
-        }
       })()
   </script>
 
