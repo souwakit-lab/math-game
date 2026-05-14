@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>怪獸數學 - 老師數據看板</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f4f6f9; padding: 20px; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4a90e2; color: white; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">📊 怪獸數學 - 學習數據即時看板</h1>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <button onclick="fetchData()" style="padding:10px 20px; cursor:pointer;">🔄 手動刷新數據</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="card" style="grid-column: span 2;">
+            <h2>🏆 學生最新成績列表</h2>
+            <table>
+                <thead><tr><th>時間</th><th>姓名</th><th>得分 (答對題數x10)</th><th>擊敗怪獸</th><th>總耗時</th></tr></thead>
+                <tbody id="student-table-body"></tbody>
+            </table>
+        </div>
+        <div class="card" style="grid-column: span 2;">
+            <h2>🚨 學生最新答題狀況 (即時錯題)</h2>
+            <div id="mistake-analysis">
+                <!-- 這裡可以根據獲取的 details (JSON) 解析出錯題排行榜 -->
+                <p>正在加載詳細錯題數據...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtJDKt0u28ZiEKu1k5RcAP_MzA4OtomgR4XSZa0I6dU6ZorYK7hN6sCpzbh1xk6IrC/exec';
+
+        async function fetchData() {
+            try {
+                const response = await fetch(SCRIPT_URL);
+                const data = await response.json();
+                
+                const tableBody = document.getElementById('student-table-body');
+                const mistakeArea = document.getElementById('mistake-analysis');
+                
+                tableBody.innerHTML = ''; // 清空舊資料
+                mistakeArea.innerHTML = '';
+                
+                // 使用 Map 來只保留每個學生的「最新一筆」資料
+                const latestData = new Map();
+                data.forEach(row => {
+                    latestData.set(row.name, row);
+                });
+                
+                const uniqueData = Array.from(latestData.values()).reverse();
+                
+                if (uniqueData.length === 0) {
+                    mistakeArea.innerHTML = '<p>目前還沒有任何數據喔！</p>';
+                    return;
+                }
+
+                // 渲染排行榜
+                uniqueData.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const date = new Date(row.timestamp).toLocaleString();
+                    tr.innerHTML = `<td>${date}</td><td>${row.name}</td><td>${row.score}</td><td>${row.monsters}</td><td>${row.totalTime} 秒</td>`;
+                    tableBody.appendChild(tr);
+                    
+                    // 渲染錯題狀況
+                    try {
+                        const details = JSON.parse(row.details);
+                        if(details && details.length > 0) {
+                            let detailHtml = `<h3>${row.name} 的作答紀錄 (共 ${details.length} 題)</h3><ul>`;
+                            details.forEach((q, idx) => {
+                                const color = q.is_correct ? 'green' : 'red';
+                                const status = q.is_correct ? '答對' : '答錯';
+                                detailHtml += `<li style="color:${color}; margin-bottom:5px;">
+                                    第 ${idx + 1} 題：花了 ${q.time_spent_seconds} 秒 ${status}。<br>
+                                    <span style="color:#666; font-size:0.9em;">正確答案：${q.correct_answer} | 學生選擇：${q.selected_answer}</span>
+                                </li>`;
+                            });
+                            detailHtml += `</ul><hr>`;
+                            mistakeArea.innerHTML += detailHtml;
+                        }
+                    } catch(e) {}
+                });
+                
+            } catch (error) {
+                console.error("抓取資料失敗", error);
+            }
+        }
+
+        // 頁面載入時自動抓取一次，並設定每 5 秒自動更新一次
+        window.onload = () => {
+            fetchData();
+            setInterval(fetchData, 5000); 
+        };
+    </script>
+</body>
+</html>

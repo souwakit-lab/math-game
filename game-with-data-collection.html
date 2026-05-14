@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>怪獸數學大作戰 - 二次根式篇</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #1a1a2e;
+            --panel-bg: #16213e;
+            --text-color: #e94560;
+            --text-light: #fff;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-light);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 600px;
+            height: 100vh;
+            max-height: 850px;
+            background-color: var(--panel-bg);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        /* 頂部數據欄 */
+        #stats-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 15px 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-bottom: 2px solid #0f3460;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.1);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: #ffd700;
+        }
+        
+        .stat-item span:first-child { color: #fff; }
+
+        /* 怪獸與戰鬥區域 */
+        #battle-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        #monster {
+            font-size: 120px;
+            animation: float 3s ease-in-out infinite;
+            filter: drop-shadow(0 0 20px rgba(233, 69, 96, 0.5));
+            transition: transform 0.1s;
+        }
+
+        #monster.hit {
+            transform: scale(0.9) rotate(-5deg);
+            filter: hue-rotate(90deg) brightness(1.5);
+        }
+
+        /* 血條 */
+        #hp-bar-container {
+            width: 60%;
+            height: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            border: 2px solid #555;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        #hp-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+            transition: width 0.3s ease;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* 題目區域 */
+        #question-area {
+            background-color: #0f3460;
+            padding: 30px 20px;
+            text-align: center;
+            font-size: 32px;
+            font-weight: bold;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 選項區域 */
+        #options-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            padding: 20px;
+            background-color: #0f3460;
+        }
+
+        .option-btn {
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 20px 10px;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #357abd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .option-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #357abd;
+        }
+
+        .option-btn:hover { background-color: #5ba1f3; }
+        .option-btn.correct { background-color: #4CAF50 !important; box-shadow: 0 4px 0 #388E3C !important; }
+        .option-btn.wrong { background-color: #F44336 !important; box-shadow: 0 4px 0 #D32F2F !important; }
+
+        /* 傷害提示動畫 */
+        .damage-text {
+            position: absolute;
+            color: #ffeb3b;
+            font-size: 36px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+            animation: floatUp 1s forwards;
+            opacity: 0;
+            z-index: 10;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="login-screen" style="position:absolute; top:0; left:0; width:100%; height:100%; background:#1a1a2e; z-index:999; display:flex; flex-direction:column; justify-content:center; align-items:center; color:white;">
+    <h2>怪獸數學大作戰</h2>
+    <input type="text" id="student-name" placeholder="請輸入你的姓名或學號" style="padding:10px; margin:20px; font-size:16px;">
+    <button onclick="startGame()" style="padding:10px 20px; font-size:18px; background:#4a90e2; color:white; border:none; border-radius:5px; cursor:pointer;">開始挑戰</button>
+</div>
+
+
+<div id="game-container" style="display: none;">
+    <div id="stats-bar">
+        <div class="stat-item"><span>勝利次數</span><span id="stat-wins">0</span></div>
+        <div class="stat-item"><span>連勝記錄</span><span id="stat-streak">0</span></div>
+        <div class="stat-item"><span>正確率</span><span id="stat-accuracy">0%</span></div>
+        <div class="stat-item"><span>累計傷害</span><span id="stat-damage">0</span></div>
+    </div>
+
+    <div id="battle-area">
+        <div id="hp-bar-container">
+            <div id="hp-bar"></div>
+        </div>
+        <div id="monster">👾</div>
+    </div>
+
+    <div id="question-area">
+        <span id="math-question">加載中...</span>
+    </div>
+
+    <div id="options-area">
+        <button class="option-btn" onclick="checkAnswer(0)"><span id="opt0"></span></button>
+        <button class="option-btn" onclick="checkAnswer(1)"><span id="opt1"></span></button>
+        <button class="option-btn" onclick="checkAnswer(2)"><span id="opt2"></span></button>
+        <button class="option-btn" onclick="checkAnswer(3)"><span id="opt3"></span></button>
+    </div>
+</div>
+
+<script>
+    
+    // === 數據回收設定 ===
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtJDKt0u28ZiEKu1k5RcAP_MzA4OtomgR4XSZa0I6dU6ZorYK7hN6sCpzbh1xk6IrC/exec'; 
+    let studentName = "";
+    let gameStartTime = 0;
+    let questionStartTime = 0;
+    let questionDetails = []; // 記錄每題的狀況
+    let currentQuestionData = {};
+    let currentOptions = [];
+
+    function startGame() {
+        const nameInput = document.getElementById('student-name').value;
+        if(!nameInput) return alert('請先輸入姓名！');
+        studentName = nameInput;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('game-container').style.display = 'flex';
+        gameStartTime = Date.now();
+        questionStartTime = Date.now();
+        
+        updateUI();
+        setTimeout(nextQuestion, 200);
+    }
+
+    function recordQuestionData(questionText, correctAnswer, selectedAnswer, isCorrect) {
+        const timeSpent = ((Date.now() - questionStartTime) / 1000).toFixed(1); // 花費秒數
+        questionDetails.push({
+            question: questionText,
+            correct_answer: correctAnswer,
+            selected_answer: selectedAnswer,
+            is_correct: isCorrect,
+            time_spent_seconds: timeSpent
+        });
+        questionStartTime = Date.now(); // 重置下一題計時
+    }
+
+    function uploadData() {
+        const totalTime = ((Date.now() - gameStartTime) / 1000).toFixed(1);
+        
+        const payload = {
+            name: studentName,
+            score: stats.correctAnswers * 10, // Assuming 10 points per correct answer, or just pass something
+            monsters: stats.wins, 
+            totalTime: totalTime,
+            questions: questionDetails
+        };
+
+        // 背景上傳，不影響遊戲體驗
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        }).then(response => console.log('Data uploaded!'))
+          .catch(error => console.error('Error!', error.message));
+    }
+
+    // 遊戲狀態變數
+    let stats = {
+        wins: 0,
+        streak: 0,
+        maxStreak: 0,
+        totalQuestions: 0,
+        correctAnswers: 0,
+        totalDamage: 0
+    };
+
+    let monsterHp = 100;
+    const maxHp = 100;
+    const monsters = ['👾', '👹', '👺', '👻', '👽', '🦖', '🐉'];
+    let currentAnswerIndex = -1;
+
+    // 更新界面數據
+    function updateUI() {
+        document.getElementById('stat-wins').innerText = stats.wins;
+        document.getElementById('stat-streak').innerText = stats.streak;
+        
+        let accuracy = stats.totalQuestions === 0 ? 0 : Math.round((stats.correctAnswers / stats.totalQuestions) * 100);
+        document.getElementById('stat-accuracy').innerText = accuracy + '%';
+        document.getElementById('stat-damage').innerText = stats.totalDamage;
+        
+        let hpPercent = Math.max(0, (monsterHp / maxHp) * 100);
+        document.getElementById('hp-bar').style.width = hpPercent + '%';
+    }
+
+    // 二次根式題目生成器
+    function generateMathQuestion() {
+        // 題目類型：0=同類二次根式加法, 1=化簡後加法, 2=乘法
+        const type = Math.floor(Math.random() * 3);
+        const bases = [2, 3, 5, 6, 7]; // 根號內的數字
+        let base = bases[Math.floor(Math.random() * bases.length)];
+        
+        let qLatex = "";
+        let aLatex = "";
+        let wrongs = [];
+
+        if (type === 0) {
+            // 例: 3√2 + 4√2 = 7√2
+            let c1 = Math.floor(Math.random() * 5) + 2; 
+            let c2 = Math.floor(Math.random() * 5) + 2;
+            qLatex = `${c1}\\sqrt{${base}} + ${c2}\\sqrt{${base}}`;
+            aLatex = `${c1 + c2}\\sqrt{${base}}`;
+            wrongs = [`${c1 + c2 + 1}\\sqrt{${base}}`, `${c1 + c2}\\sqrt{${base + 1}}`, `${Math.abs(c1 - c2) || 1}\\sqrt{${base}}`];
+        } 
+        else if (type === 1) {
+            // 例: √12 + √27 = 2√3 + 3√3 = 5√3
+            let b = [2, 3, 5][Math.floor(Math.random() * 3)];
+            let m1 = Math.floor(Math.random() * 3) + 2; // 2, 3, 4
+            let m2 = Math.floor(Math.random() * 3) + 2;
+            let val1 = m1 * m1 * b;
+            let val2 = m2 * m2 * b;
+            
+            qLatex = `\\sqrt{${val1}} + \\sqrt{${val2}}`;
+            aLatex = `${m1 + m2}\\sqrt{${b}}`;
+            wrongs = [`${m1 * m2}\\sqrt{${b}}`, `${m1 + m2 + 1}\\sqrt{${b}}`, `\\sqrt{${val1 + val2}}`];
+        } 
+        else {
+            // 例: √2 * √6 = √12 = 2√3
+            let mBase = [2, 3][Math.floor(Math.random() * 2)];
+            let c1 = Math.floor(Math.random() * 3) + 2;
+            let c2 = Math.floor(Math.random() * 3) + 2;
+            qLatex = `${c1}\\sqrt{${mBase}} \\times ${c2}\\sqrt{${mBase}}`;
+            aLatex = `${c1 * c2 * mBase}`; // 整數
+            wrongs = [`${c1 * c2}\\sqrt{${mBase}}`, `${(c1 * c2) + mBase}`, `${c1 * c2 * mBase * mBase}`];
+        }
+
+        return { question: qLatex, answer: aLatex, distractors: wrongs };
+    }
+
+    // 渲染下一題
+    function nextQuestion() {
+        const qData = generateMathQuestion();
+        currentQuestionData = qData; // save
+        
+        // 渲染題目
+        katex.render(qData.question + " = ?", document.getElementById('math-question'), { throwOnError: false });
+
+        // 準備選項並打亂
+        let options = [qData.answer, ...qData.distractors];
+        currentAnswerIndex = Math.floor(Math.random() * 4);
+        
+        // 確保正確答案插入到隨機位置
+        [options[0], options[currentAnswerIndex]] = [options[currentAnswerIndex], options[0]];
+        currentOptions = options; // save
+
+        // 渲染按鈕上的選項
+        for (let i = 0; i < 4; i++) {
+            let btn = document.querySelectorAll('.option-btn')[i];
+            btn.className = "option-btn"; // 重置顏色
+            btn.disabled = false;
+            katex.render(options[i], document.getElementById(`opt${i}`), { throwOnError: false });
+        }
+        questionStartTime = Date.now(); // update time for this question
+    }
+
+    // 檢查答案
+    function checkAnswer(selectedIndex) {
+        stats.totalQuestions++;
+        const buttons = document.querySelectorAll('.option-btn');
+        
+        // 鎖定按鈕防止連點
+        buttons.forEach(btn => btn.disabled = true);
+
+        const isCorrect = (selectedIndex === currentAnswerIndex);
+        recordQuestionData(currentQuestionData.question, currentOptions[currentAnswerIndex], currentOptions[selectedIndex], isCorrect);
+
+        if (isCorrect) {
+            // 答對了
+            stats.correctAnswers++;
+            stats.streak++;
+            if (stats.streak > stats.maxStreak) stats.maxStreak = stats.streak;
+            
+            // 計算傷害 (基礎 20 + 連勝加成)
+            let damage = 20 + (stats.streak * 5);
+            stats.totalDamage += damage;
+            monsterHp -= damage;
+
+            buttons[selectedIndex].classList.add('correct');
+            showDamage(damage);
+            monsterHitAnim();
+
+            if (monsterHp <= 0) {
+                setTimeout(defeatMonster, 500);
+            } else {
+                setTimeout(nextQuestion, 800);
+            }
+        } else {
+            // 答錯了
+            stats.streak = 0;
+            buttons[selectedIndex].classList.add('wrong');
+            buttons[currentAnswerIndex].classList.add('correct'); // 顯示正確答案
+            setTimeout(nextQuestion, 1200);
+        }
+        
+        
+        // 背景上傳，不影響遊戲體驗
+        setTimeout(uploadData, 100);
+        updateUI();
+
+    }
+
+    // 怪獸受傷動畫
+    function monsterHitAnim() {
+        const monster = document.getElementById('monster');
+        monster.classList.add('hit');
+        setTimeout(() => monster.classList.remove('hit'), 200);
+    }
+
+    // 顯示飄字傷害
+    function showDamage(dmg) {
+        const battleArea = document.getElementById('battle-area');
+        const text = document.createElement('div');
+        text.className = 'damage-text';
+        text.innerText = '-' + dmg;
+        // 隨機位置
+        text.style.left = (50 + (Math.random() * 20 - 10)) + '%';
+        text.style.top = '40%';
+        battleArea.appendChild(text);
+        
+        setTimeout(() => text.remove(), 1000);
+    }
+
+    // 擊敗怪獸
+    function defeatMonster() {
+        stats.wins++;
+        monsterHp = maxHp;
+        
+        // 換一隻新怪獸
+        const nextMonster = monsters[Math.floor(Math.random() * monsters.length)];
+        const monsterEl = document.getElementById('monster');
+        monsterEl.style.transform = "scale(0)";
+        
+        setTimeout(() => {
+            monsterEl.innerText = nextMonster;
+            monsterEl.style.transform = "scale(1)";
+            updateUI();
+            nextQuestion();
+        }, 300);
+    }
+
+    // 頁面加載後初始化遊戲
+    window.onload = () => {
+        // UI initializes when startGame is clicked
+    };
+
+</script>
+</body>
+</html>
